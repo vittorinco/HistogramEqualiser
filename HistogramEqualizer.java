@@ -15,21 +15,16 @@ import java.awt.geom.AffineTransform;
 import java.awt.image.AffineTransformOp;
 import java.io.IOException;
 import javax.swing.*;
-import java.nio.Buffer;
-import java.util.Vector;
-import com.pearsoneduc.ip.io.*;
-import com.pearsoneduc.ip.gui.*;
-import com.pearsoneduc.ip.op.OperationException;
 
 
-public class HistogramEqualiser extends Component {
+public class HistogramEqualizer extends Component {
 
     private void startHistogram() {
-        System.out.println("Starting HistogramEqualiser...");
+        System.out.println("Starting HistogramEqualizer...");
         BufferedImage image = getImage();
         display(image, "Original Image");
 
-        // Histogram
+        // HISTOGRAM
         System.out.println("\nGetting histogram...");
         int[] histogramArray = calculateHistogram(image);
         BufferedImage histogram = getHistogram(image, histogramArray);
@@ -41,25 +36,37 @@ public class HistogramEqualiser extends Component {
             System.out.println("Error exporting histogram");
         }
 
-        System.out.println("\nEqualising image...");
+        // EQUALIZE IMAGE
+        System.out.println("\nEqualizing image...");
         double[] cumulativeHistogramArray = calculateCumulativeHistogram(image, histogram, histogramArray);
-        BufferedImage newImage = applyEqualisation(image, cumulativeHistogramArray);
-        display(newImage, "Equalised Image");
+        BufferedImage newImage = applyEqualization(image, cumulativeHistogramArray);
+        display(newImage, "Equalized Image");
         try {
-            File outputfile2 = new File("equalisedImage.png");
+            File outputfile2 = new File("equalizedImage.png");
             ImageIO.write(newImage, "png", outputfile2);
         } catch (IOException e) {
             System.out.println("Error exporting equalizedImage");
         }
 
-        System.out.println("\nGetting equalised histogram...");
+        // EQUALIZED HISTOGRAM
+        System.out.println("\nGetting equalized histogram...");
         int[] newHistogramArray = calculateHistogram(newImage);
-        BufferedImage equalisedHistogram = getHistogram(newImage, newHistogramArray);
-        display(equalisedHistogram, "Equalised Histogram");
-        //BufferedImage equalisedHistogram = getEqualisedHistogram(image, histogram, equalisedArray);
+        BufferedImage tempEqualizedHistogram = getHistogram(newImage, newHistogramArray);
+
+        // Resize
+        AffineTransform at = new AffineTransform();
+        at.scale(1.0, 0.5);
+        AffineTransformOp scaleOp =
+                new AffineTransformOp(at, AffineTransformOp.TYPE_BILINEAR);
+        BufferedImage equalizedHistogram = new BufferedImage(tempEqualizedHistogram.getWidth(),
+                tempEqualizedHistogram.getHeight()/2, BufferedImage.TYPE_INT_ARGB);
+        equalizedHistogram = scaleOp.filter(tempEqualizedHistogram, equalizedHistogram);
+
+        display(equalizedHistogram, "Equalized Histogram");
+        //BufferedImage equalizedHistogram = getEqualizedHistogram(image, histogram, equalizedArray);
         try {
-            File outputfile3 = new File("equalisedHistogram.png");
-            ImageIO.write(equalisedHistogram, "png", outputfile3);
+            File outputfile3 = new File("equalizedHistogram.png");
+            ImageIO.write(equalizedHistogram, "png", outputfile3);
         } catch (IOException e) {
             System.out.println("Error exporting equalizedHistogram");
         }
@@ -87,8 +94,6 @@ public class HistogramEqualiser extends Component {
     public int[] calculateHistogram(BufferedImage image) {
         int imageDepth = image.getColorModel().getPixelSize();
         int imageValues = (int) (Math.pow(2, imageDepth));
-        //System.out.println("Image depth: " + imageDepth + ", total pixel values: " + imageValues);
-
         int[] values = new int[imageValues];
 
         for (int i = 0; i < image.getWidth(); i++) {              // loop from 0 to width-1
@@ -107,12 +112,9 @@ public class HistogramEqualiser extends Component {
             if (value > maxValue)
                 maxValue = value;
         }
-        System.out.println("Max value: " + maxValue);
 
         BufferedImage histogram =
                 new BufferedImage(imageValues*3, maxValue, BufferedImage.TYPE_BYTE_GRAY);
-        System.out.println("histogram size: " + histogram.getWidth() + " x " + histogram.getHeight()
-                + "histogram depth: " + histogram.getColorModel().getPixelSize());
 
         for (int i = 0; i < values.length; i++) {       // loop through each value bin
             for (int j = 0; j < values[i]; j++) {       // loop from 0 to value in bin i
@@ -120,6 +122,8 @@ public class HistogramEqualiser extends Component {
                 histogram.setRGB((i*3)+1, histogram.getHeight() - j - 1, 255);
             }
         }
+
+        // Resize histogram
         AffineTransform at = new AffineTransform();
         at.scale(1.0, 0.25);
         AffineTransformOp scaleOp =
@@ -130,42 +134,24 @@ public class HistogramEqualiser extends Component {
     }
 
     public double[] calculateCumulativeHistogram(BufferedImage image, BufferedImage histogram, int[] values) {
-        //double alpha = values.length/(image.getWidth()*image.getHeight());
         float alpha = 255.0f / (image.getWidth()*image.getHeight());
-        double[] cumulativeHistogram = new double[values.length];
-        cumulativeHistogram[0] = alpha*values[0];
-        System.out.println("Alpha: " + alpha + " cumul Hist size: " + cumulativeHistogram.length);
+        double[] cumulativeHistogram = new double[values.length];    // array for cumulative histogram
 
+        cumulativeHistogram[0] = alpha*values[0];                   // first value of cumulative histogram
         for (int i = 1; i < values.length; i++) {
             cumulativeHistogram[i] = cumulativeHistogram[i - 1] + (alpha * values[i]);
         }
-
-        System.out.println("TEST: " + cumulativeHistogram[0] + " " + cumulativeHistogram[200]);
         return cumulativeHistogram;
     }
 
-    public BufferedImage applyEqualisation(BufferedImage image, double[] equalisedArray){
+    public BufferedImage applyEqualization(BufferedImage image, double[] equalizedArray){
         BufferedImage newImage = image;
         for (int i = 0; i < image.getWidth(); i++) {
             for (int j = 0; j < image.getHeight(); j++) {
-                newImage.setRGB(i, j, (int) equalisedArray[image.getData().getSample(i, j, 0)]);
+                newImage.setRGB(i, j, 3*(int)equalizedArray[image.getData().getSample(i, j, 0)]);
             }
         }
         return newImage;
-    }
-
-    public BufferedImage getEqualisedHistogram(BufferedImage image, BufferedImage histogram, double[] equalizedArray) {
-
-        BufferedImage equalisedHistogram =
-                new BufferedImage(histogram.getWidth(), histogram.getHeight(), BufferedImage.TYPE_BYTE_GRAY);
-
-        for (int i = 0; i < equalizedArray.length; i++) {
-            for (int j = 0; j < equalizedArray[i]; j++) {
-                equalisedHistogram.setRGB((i*3), histogram.getHeight() - j - 1, 255);
-                equalisedHistogram.setRGB((i*3)+1, histogram.getHeight() - j - 1, 255);
-            }
-        }
-        return equalisedHistogram;
     }
 
     private void display(BufferedImage image, String title) {
@@ -179,7 +165,7 @@ public class HistogramEqualiser extends Component {
 
     public static void main(String[] argv) {
         try {
-            new HistogramEqualiser().startHistogram();
+            new HistogramEqualizer().startHistogram();
         }
         catch (Exception e) {
             System.out.println(e);
